@@ -12,39 +12,199 @@ from dgbowl_schemas.tomato.payload_2_2 import Payload
 from pydantic import ValidationError
 from tomato import ketchup, tomato
 
-from marinara.utils import TOUT, triggered_pattern_index
+from marinara.utils import TOUT, create_header, triggered_pattern_index
 
 logger = logging.getLogger(__name__)
-# order=0: dash.page_registry is checked in registry order, and without it
-# job.py's "/jobs/<id>" template (module "job" sorts before "new_job") would
-# match "/jobs/new" first, treating "new" as an id.
+# order=0: dash.page_registry is checked in alphabetical order by module name,
+# and without it job.py's "/jobs/<id>" template would match "/jobs/new" first,
+# treating "new" as an id.
 dash.register_page(__name__, path="/jobs/new", order=0, title="New Job")
+
+
+def sample_rows(identifier_id: str, is_parent_id: str) -> list[html.Div]:
+    return [
+        html.Div(
+            className="attr-row",
+            children=[
+                html.Div("Sample Identifier:", className="attr-label"),
+                dcc.Input(id=identifier_id, type="text", className="attr-control"),
+            ],
+        ),
+        html.Div(
+            className="attr-row",
+            children=[
+                html.Div("", className="attr-label"),
+                dcc.Checklist(
+                    id=is_parent_id,
+                    options=[{"label": " Sample is parent", "value": "parent"}],
+                    value=["parent"],
+                ),
+            ],
+        ),
+    ]
+
+
+def new_payload_tab() -> dcc.Tab:
+    return dcc.Tab(
+        label="New Payload",
+        value="new-payload",
+        children=[
+            html.Div(
+                className="tab-section",
+                children=[
+                    html.H3("Pipeline & Sample", style={"margin-top": 0}),
+                    html.Div(
+                        className="attr-row",
+                        children=[
+                            html.Div("Pipeline:", className="attr-label"),
+                            dcc.Dropdown(
+                                id="new-job-pipeline-dropdown",
+                                className="attr-control",
+                                clearable=False,
+                            ),
+                        ],
+                    ),
+                    *sample_rows(
+                        "new-job-sample-identifier", "new-job-sample-is-parent"
+                    ),
+                ],
+            ),
+            html.Div(
+                className="tab-section",
+                children=[
+                    html.Div(
+                        children=[
+                            html.H3("Method", style={"margin": 0}),
+                            html.Button(
+                                "+ Add Task",
+                                id="new-job-add-task-btn",
+                                className="btn-success",
+                                style={"margin-left": "auto"},
+                            ),
+                        ],
+                        style={
+                            "display": "flex",
+                            "align-items": "center",
+                            "margin-bottom": "20px",
+                            "border-bottom": "1px solid var(--border-color)",
+                            "padding-bottom": "10px",
+                        },
+                    ),
+                    html.Div(id="new-job-tasks-container"),
+                ],
+            ),
+        ],
+    )
+
+
+def select_payload_tab() -> dcc.Tab:
+    return dcc.Tab(
+        label="Select Payload",
+        value="select-payload",
+        children=[
+            html.Div(
+                className="tab-section",
+                children=[
+                    html.H3("Upload Payload", style={"margin-top": 0}),
+                    dcc.Upload(
+                        id="new-job-payload-upload",
+                        children=html.Div(
+                            ["Drag and drop or ", html.A("select a file")]
+                        ),
+                        accept=".yml,.yaml,.json",
+                        style={
+                            "border": "1px dashed var(--border-color)",
+                            "border-radius": "var(--radius)",
+                            "padding": "30px",
+                            "text-align": "center",
+                            "cursor": "pointer",
+                        },
+                    ),
+                    html.Div(id="new-job-upload-status", style={"margin-top": "10px"}),
+                ],
+            ),
+            html.Div(
+                className="tab-section",
+                children=[
+                    html.H3("Sample", style={"margin-top": 0}),
+                    *sample_rows(
+                        "new-job-upload-sample-identifier",
+                        "new-job-upload-sample-is-parent",
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
+def job_settings_card() -> html.Div:
+    """Settings shared by both tabs."""
+    return html.Div(
+        className="card",
+        children=[
+            html.H3("Job Settings", style={"margin-top": 0}),
+            html.Div(
+                className="attr-row",
+                children=[
+                    html.Div("Job Name:", className="attr-label"),
+                    dcc.Input(
+                        id="new-job-name",
+                        type="text",
+                        className="attr-control",
+                        placeholder="optional",
+                    ),
+                ],
+            ),
+            html.Div(
+                className="attr-row",
+                children=[
+                    html.Div("Output Path:", className="attr-label"),
+                    dcc.Input(
+                        id="new-job-output-path",
+                        type="text",
+                        className="attr-control attr-control-wide",
+                        debounce=True,
+                        placeholder="defaults to tomato's working directory",
+                    ),
+                ],
+            ),
+            html.Div(id="new-job-output-path-warning"),
+        ],
+    )
+
+
+def yaml_preview_card() -> html.Div:
+    """Preview and submit button shared by both tabs."""
+    return html.Div(
+        className="card",
+        children=[
+            html.H3("YAML Preview", style={"margin-top": 0}),
+            html.Pre(
+                id="new-job-yaml-preview",
+                style={
+                    "font-family": "monospace",
+                    "font-size": "13px",
+                    "overflow-x": "auto",
+                    "padding": "15px",
+                    "background-color": "rgba(0,0,0,0.01)",
+                    "border-radius": "6px",
+                    "margin": 0,
+                },
+            ),
+            html.Button(
+                "Submit Job",
+                id="new-job-submit-btn",
+                style={"padding": "10px 20px", "margin-top": "15px"},
+            ),
+            html.Div(id="new-job-submit-result", className="submit-result"),
+        ],
+    )
 
 
 layout = html.Div(
     className="dashboard-container",
     children=[
-        html.Div(
-            className="theme-header",
-            children=[
-                html.Div(
-                    children=[
-                        dcc.Link(
-                            "← Back to Jobs",
-                            href="/jobs",
-                            className="btn",
-                            style={"margin-right": "20px"},
-                        ),
-                        html.H2(
-                            "New Job",
-                            className="inline",
-                            style={"margin": 0, "font-size": "22px"},
-                        ),
-                    ],
-                    style={"display": "flex", "align-items": "center"},
-                ),
-            ],
-        ),
+        create_header("job", title="New Job"),
         dcc.Tabs(
             id="new-job-tabs",
             value="new-payload",
@@ -54,208 +214,10 @@ layout = html.Div(
                 "background": "var(--card-bg)",
             },
             style={"margin-bottom": "20px"},
-            children=[
-                dcc.Tab(
-                    label="New Payload",
-                    value="new-payload",
-                    children=[
-                        html.Div(
-                            className="card",
-                            children=[
-                                html.H3("Pipeline & Sample", style={"margin-top": 0}),
-                                html.Div(
-                                    className="attr-row",
-                                    children=[
-                                        html.Div("Pipeline:", className="attr-label"),
-                                        dcc.Dropdown(
-                                            id="new-job-pipeline-dropdown",
-                                            className="attr-control",
-                                            clearable=False,
-                                        ),
-                                    ],
-                                ),
-                                html.Div(
-                                    className="attr-row",
-                                    children=[
-                                        html.Div(
-                                            "Sample Identifier:",
-                                            className="attr-label",
-                                        ),
-                                        dcc.Input(
-                                            id="new-job-sample-identifier",
-                                            type="text",
-                                            className="attr-control",
-                                        ),
-                                    ],
-                                ),
-                                html.Div(
-                                    className="attr-row",
-                                    children=[
-                                        html.Div("", className="attr-label"),
-                                        dcc.Checklist(
-                                            id="new-job-sample-is-parent",
-                                            options=[
-                                                {
-                                                    "label": " Sample is parent",
-                                                    "value": "parent",
-                                                }
-                                            ],
-                                            value=["parent"],
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            className="card",
-                            children=[
-                                html.Div(
-                                    children=[
-                                        html.H3("Method", style={"margin": 0}),
-                                        html.Button(
-                                            "+ Add Task",
-                                            id="new-job-add-task-btn",
-                                            className="btn-success",
-                                            style={"margin-left": "auto"},
-                                        ),
-                                    ],
-                                    style={
-                                        "display": "flex",
-                                        "align-items": "center",
-                                        "margin-bottom": "20px",
-                                        "border-bottom": "1px solid var(--border-color)",
-                                        "padding-bottom": "10px",
-                                    },
-                                ),
-                                html.Div(id="new-job-tasks-container"),
-                            ],
-                        ),
-                    ],
-                ),
-                dcc.Tab(
-                    label="Select Payload",
-                    value="select-payload",
-                    children=[
-                        html.Div(
-                            className="card",
-                            children=[
-                                html.H3("Upload Payload", style={"margin-top": 0}),
-                                dcc.Upload(
-                                    id="new-job-payload-upload",
-                                    children=html.Div(
-                                        ["Drag and drop or ", html.A("select a file")]
-                                    ),
-                                    accept=".yml,.yaml,.json",
-                                    style={
-                                        "border": "1px dashed var(--border-color)",
-                                        "border-radius": "var(--radius)",
-                                        "padding": "30px",
-                                        "text-align": "center",
-                                        "cursor": "pointer",
-                                    },
-                                ),
-                                html.Div(
-                                    id="new-job-upload-status",
-                                    style={"margin-top": "10px"},
-                                ),
-                            ],
-                        ),
-                        html.Div(
-                            className="card",
-                            children=[
-                                html.H3("Sample", style={"margin-top": 0}),
-                                html.Div(
-                                    className="attr-row",
-                                    children=[
-                                        html.Div(
-                                            "Sample Identifier:",
-                                            className="attr-label",
-                                        ),
-                                        dcc.Input(
-                                            id="new-job-upload-sample-identifier",
-                                            type="text",
-                                            className="attr-control",
-                                        ),
-                                    ],
-                                ),
-                                html.Div(
-                                    className="attr-row",
-                                    children=[
-                                        html.Div("", className="attr-label"),
-                                        dcc.Checklist(
-                                            id="new-job-upload-sample-is-parent",
-                                            options=[
-                                                {
-                                                    "label": " Sample is parent",
-                                                    "value": "parent",
-                                                }
-                                            ],
-                                            value=["parent"],
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-            ],
+            children=[new_payload_tab(), select_payload_tab()],
         ),
-        html.Div(
-            className="card",
-            children=[
-                html.H3("Job Settings", style={"margin-top": 0}),
-                html.Div(
-                    className="attr-row",
-                    children=[
-                        html.Div("Job Name:", className="attr-label"),
-                        dcc.Input(
-                            id="new-job-name",
-                            type="text",
-                            className="attr-control",
-                            placeholder="optional",
-                        ),
-                    ],
-                ),
-                html.Div(
-                    className="attr-row",
-                    children=[
-                        html.Div("Output Path:", className="attr-label"),
-                        dcc.Input(
-                            id="new-job-output-path",
-                            type="text",
-                            className="attr-control attr-control-wide",
-                            debounce=True,
-                            placeholder="defaults to tomato's working directory",
-                        ),
-                    ],
-                ),
-                html.Div(id="new-job-output-path-warning"),
-            ],
-        ),
-        html.Div(
-            className="card",
-            children=[
-                html.H3("YAML Preview", style={"margin-top": 0}),
-                html.Pre(
-                    id="new-job-yaml-preview",
-                    style={
-                        "font-family": "monospace",
-                        "font-size": "13px",
-                        "overflow-x": "auto",
-                        "padding": "15px",
-                        "background-color": "rgba(0,0,0,0.01)",
-                        "border-radius": "6px",
-                        "margin": 0,
-                    },
-                ),
-                html.Button(
-                    "Submit Job",
-                    id="new-job-submit-btn",
-                    style={"padding": "10px 20px", "margin-top": "15px"},
-                ),
-                html.Div(id="new-job-submit-result", className="submit-result"),
-            ],
-        ),
+        job_settings_card(),
+        yaml_preview_card(),
         dcc.ConfirmDialog(id="new-job-submit-error-dialog"),
         dcc.Store(id="new-job-tasks-list-store", data=[]),
         dcc.Store(id="new-job-roles-store", data={}),

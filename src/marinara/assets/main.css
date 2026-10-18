@@ -176,6 +176,12 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
     min-width: 0;
 }
 
+/* Content that sits directly on a tab's background, without a card's surface */
+.tab-section {
+    padding: 10px 0;
+    min-width: 0;
+}
+
 .component-grid {
     display: grid;
     grid-template-columns: 1fr;
